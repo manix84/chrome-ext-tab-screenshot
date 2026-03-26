@@ -62,14 +62,21 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "FORCE_RELEASE=$FORCE_RELEASE"
+          echo "OLD_VERSION=$OLD_VERSION"
+          echo "NEW_VERSION=$NEW_VERSION"
+
           if [ "$FORCE_RELEASE" = "true" ]; then
+            echo "Manual force release requested."
             echo "should_release=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           if dpkg --compare-versions "$NEW_VERSION" gt "$OLD_VERSION"; then
+            echo "Version increased. Release will be created."
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           else
+            echo "Version did not increase. Release will be skipped."
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           fi
 
