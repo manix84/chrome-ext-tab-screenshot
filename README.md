@@ -1,5 +1,7 @@
 # chrome-ext-tab-screenshot
 
+[![Release Chrome Extension](https://github.com/manix84/chrome-ext-tab-screenshot/actions/workflows/release-extension.yml/badge.svg)](https://github.com/manix84/chrome-ext-tab-screenshot/actions/workflows/release-extension.yml)
+
 A simple Chrome extension that takes a screenshot of the current tab and saves it directly to your default download directory — no fuss, no frills.
 
 ## Overview
