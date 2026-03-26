@@ -1,0 +1,127 @@
+name: Release Chrome Extension
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - manifest.json
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Read old and new versions
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            OLD_VERSION="$(git show HEAD^:manifest.json | jq -r '.version')"
+          else
+            OLD_VERSION="0.0.0"
+          fi
+
+          NEW_VERSION="$(jq -r '.version' manifest.json)"
+
+          echo "old_version=$OLD_VERSION" >> "$GITHUB_OUTPUT"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+          echo "Old: $OLD_VERSION"
+          echo "New: $NEW_VERSION"
+
+      - name: Stop if version did not increase
+        id: version_check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          old="${{ steps.versions.outputs.old_version }}"
+          new="${{ steps.versions.outputs.new_version }}"
+
+          python3 - << 'PY'
+          import os
+          from packaging.version import Version
+
+          old = os.environ["OLD_VERSION"]
+          new = os.environ["NEW_VERSION"]
+
+          if Version(new) > Version(old):
+              print("should_release=true")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+                  f.write("should_release=true\n")
+          else:
+              print("should_release=false")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+                  f.write("should_release=false\n")
+          PY
+        env:
+          OLD_VERSION: ${{ steps.versions.outputs.old_version }}
+          NEW_VERSION: ${{ steps.versions.outputs.new_version }}
+
+      - name: Set up Google Chrome
+        if: steps.version_check.outputs.should_release == 'true'
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Restore extension private key
+        if: steps.version_check.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.CHROME_EXTENSION_PEM_BASE64 }}" | base64 -d > extension.pem
+          chmod 600 extension.pem
+
+      - name: Pack CRX
+        if: steps.version_check.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p build
+
+          chrome --headless=new \
+            --disable-gpu \
+            --no-sandbox \
+            --pack-extension="${GITHUB_WORKSPACE}" \
+            --pack-extension-key="${GITHUB_WORKSPACE}/extension.pem"
+
+          mv "${GITHUB_WORKSPACE}.crx" "build/one-click-screenshot-${{ steps.versions.outputs.new_version }}.crx"
+
+      - name: Create source zip
+        if: steps.version_check.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          zip -r "build/one-click-screenshot-${{ steps.versions.outputs.new_version }}.zip" . \
+            -x ".git/*" ".github/*" "build/*"
+
+      - name: Create GitHub Release
+        if: steps.version_check.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.versions.outputs.new_version }}"
+          TAG="v${VERSION}"
+
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "Release $TAG" \
+            "build/one-click-screenshot-${VERSION}.crx" \
+            "build/one-click-screenshot-${VERSION}.zip"
