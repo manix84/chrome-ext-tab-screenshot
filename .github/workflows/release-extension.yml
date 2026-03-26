@@ -93,8 +93,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "${{ secrets.CHROME_EXTENSION_PEM_BASE64 }}" | base64 --decode > extension.pem
-          chmod 600 extension.pem
+          mkdir -p /tmp/chrome-key
+          echo "${{ secrets.CHROME_EXTENSION_PEM_BASE64 }}" | base64 --decode > /tmp/chrome-key/extension.pem
+          chmod 600 /tmp/chrome-key/extension.pem
 
       - name: Pack CRX
         if: steps.decision.outputs.should_release == 'true'
@@ -108,7 +109,7 @@ jobs:
             --disable-gpu \
             --no-sandbox \
             --pack-extension="$GITHUB_WORKSPACE" \
-            --pack-extension-key="$GITHUB_WORKSPACE/extension.pem"
+            --pack-extension-key="/tmp/chrome-key/extension.pem"
 
           mv "$GITHUB_WORKSPACE.crx" "build/one-click-screenshot-${{ steps.versions.outputs.new_version }}.crx"
 
